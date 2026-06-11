@@ -1,14 +1,12 @@
-"""LangGraph workflow for the POC."""
+"""Fluxo de LangGraph para a POC."""
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, TypedDict
+from typing import Any, Callable, Dict, Optional, TypedDict
 
-from langgraph.graph import END, StateGraph
-
-from src.llm import get_llm
-from src.rag import load_retriever
-from src.tools import get_tools
+from src.llm import call_llm
+from src.rag import retrieve_context
+from src.tools import classify_risk, get_customer_transaction_summary
 
 
 class AgentState(TypedDict, total=False):
@@ -18,53 +16,234 @@ class AgentState(TypedDict, total=False):
     context: Optional[str]
     transaction_summary: Optional[Dict[str, Any]]
     risk_level: Optional[str]
+    evidence_sufficient: Optional[bool]
     human_review_required: Optional[bool]
+    review_reason: Optional[str]
     final_answer: Optional[str]
 
 
+INTENT_LABELS = (
+    "contestacao",
+    "consulta_operacional",
+    "risco",
+    "cadastro",
+    "outro",
+)
+
+
+def _intent_from_text(text: str) -> str:
+    normalized = text.lower()
+    keyword_map = {
+        "contestacao": ["contest", "chargeback", "transacao", "transação", "fraude"],
+        "consulta_operacional": ["procedimento", "orientacao", "orientação", "como faço", "como faco"],
+        "risco": ["risco", "fraude", "suspeit", "alto impacto"],
+        "cadastro": ["cadastro", "atualizar", "alterar", "endereco", "endereço"],
+    }
+    for label, keywords in keyword_map.items():
+        if any(keyword in normalized for keyword in keywords):
+            return label
+    return "outro"
+
+
+def _llm_or_fallback_classification(question: str) -> str:
+    # Tentar o LLM primeiro, mas cair para heurísticas determinísticas por palavra-chave.
+    prompt = f"""
+Você é um classificador de intenção para uma operação bancária.
+
+Escolha apenas uma das categorias abaixo:
+- contestacao
+- consulta_operacional
+- risco
+- cadastro
+- outro
+
+Regras:
+- Responda somente com uma categoria.
+- Não explique a resposta.
+- Não use pontuação.
+
+Solicitação:
+{question}
+"""
+    result = call_llm(prompt, max_tokens=20, temperature=0.0).strip().lower()
+    return result if result in INTENT_LABELS else _intent_from_text(question)
+
+
+def _extract_evidence_sufficiency(context: str | None) -> bool:
+    if not context:
+        return False
+    return not context.startswith("[ERRO_RAG]") and len(context.strip()) > 30
+
+
 def classify_intent_node(state: AgentState) -> AgentState:
-    state["intent"] = "pending"
+    # Primeiro passo: entender o que a pessoa está pedindo.
+    state["intent"] = _llm_or_fallback_classification(state["user_question"])
     return state
 
 
 def retrieve_context_node(state: AgentState) -> AgentState:
-    documents = load_retriever()
-    state["context"] = ", ".join(path.as_posix() for path in documents)
+    # Segundo passo: trazer evidências da taxonomia de políticas.
+    state["context"] = retrieve_context(state["user_question"])
+    state["evidence_sufficient"] = _extract_evidence_sufficiency(state["context"])
     return state
 
 
 def data_tool_node(state: AgentState) -> AgentState:
-    tools = get_tools()
-    state["transaction_summary"] = {"tools_loaded": len(tools)}
+    # Terceiro passo: buscar os dados operacionais simulados.
+    customer_id = state.get("customer_id", "123")
+    state["transaction_summary"] = get_customer_transaction_summary(customer_id)
     return state
 
 
 def risk_node(state: AgentState) -> AgentState:
-    state["risk_level"] = "pendente"
-    state["human_review_required"] = False
+    # Quarto passo: classificar o risco operacional e decidir se precisa de revisão humana.
+    summary = state.get("transaction_summary") or {}
+    risk_level = classify_risk(summary)
+    state["risk_level"] = risk_level
+    state["human_review_required"] = bool(risk_level == "alto" or not state.get("evidence_sufficient"))
+
+    reasons: list[str] = []
+    if risk_level == "alto":
+        reasons.append("risco operacional classificado como alto")
+    if not state.get("evidence_sufficient"):
+        reasons.append("evidência insuficiente recuperada dos documentos de política")
+    state["review_reason"] = "; ".join(reasons) if reasons else None
     return state
 
 
+def human_review_node(state: AgentState) -> AgentState:
+    # Quando o risco é alto ou a evidência é fraca, o fluxo passa por aqui antes da resposta final.
+    if state.get("review_reason"):
+        note = f"Revisão humana necessária: {state['review_reason']}."
+    else:
+        note = "Revisão humana necessária."
+    state["final_answer"] = note
+    return state
+
+
+def _build_local_answer(state: AgentState) -> str:
+    summary = state.get("transaction_summary") or {}
+    review_flag = "sim" if state.get("human_review_required") else "não"
+    return (
+        "## Resultado da análise\n\n"
+        f"- Intenção: {state.get('intent')}\n"
+        f"- Risco: {state.get('risk_level')}\n"
+        f"- Revisão humana: {review_flag}\n\n"
+        "## Evidências consultadas\n"
+        f"{state.get('context') or 'Sem contexto recuperado.'}\n\n"
+        "## Resumo transacional\n"
+        f"{summary}\n"
+    )
+
+
 def final_answer_node(state: AgentState) -> AgentState:
-    llm = get_llm()
-    state["final_answer"] = f"LLM configurado: {llm is not None}"
+    # Gerar a resposta final somente depois que evidências e risco estiverem reunidos.
+    prompt = f"""
+Você é um assistente operacional bancário.
+
+Contexto do trabalho:
+- Você recebe solicitações operacionais de um analista.
+- Você deve ser objetivo, auditável e conservador.
+- Você nunca deve inventar fatos.
+
+Regras obrigatórias:
+- Use apenas o contexto e o resumo transacional.
+- Se faltar evidência, recomende revisão humana.
+- Se o risco for alto, recomende revisão humana.
+- Se houver incerteza, diga isso claramente.
+- Responda em português do Brasil.
+
+Solicitação:
+{state['user_question']}
+
+Intenção classificada:
+{state.get('intent')}
+
+Contexto recuperado:
+{state.get('context')}
+
+Resumo transacional:
+{state.get('transaction_summary')}
+
+Risco:
+{state.get('risk_level')}
+
+Revisão humana obrigatória:
+{state.get('human_review_required')}
+
+Responda com exatamente estas seções:
+1. Entendimento da solicitação
+2. Evidências consultadas
+3. Avaliação de risco
+4. Recomendação operacional
+5. Necessidade de revisão humana
+6. Limitações da análise
+"""
+    llm_answer = call_llm(prompt, max_tokens=700, temperature=0.2)
+    if llm_answer.startswith("[ERRO_LLM]"):
+        state["final_answer"] = _build_local_answer(state)
+    else:
+        state["final_answer"] = llm_answer
+    return state
+
+
+class SimpleGraph:
+    def __init__(self, runner: Callable[[AgentState], AgentState]):
+        self._runner = runner
+
+    def invoke(self, state: AgentState) -> AgentState:
+        # Fallback mínimo quando o langgraph não está instalado.
+        return self._runner(state)
+
+
+def _run_pipeline(state: AgentState) -> AgentState:
+    # A execução alternativa espelha a ordem do grafo em um pipeline linear Python.
+    state = classify_intent_node(state)
+    state = retrieve_context_node(state)
+    state = data_tool_node(state)
+    state = risk_node(state)
+    if state.get("human_review_required"):
+        state = human_review_node(state)
+    else:
+        state = final_answer_node(state)
     return state
 
 
 def build_graph():
+    """Construir o grafo do fluxo, com plano de contingência para pipeline local quando necessário."""
+    try:
+        from langgraph.graph import END, StateGraph
+    except ImportError:
+        # Manter o projeto executável em ambientes sem langgraph.
+        return SimpleGraph(_run_pipeline)
+
     workflow = StateGraph(AgentState)
 
     workflow.add_node("classify_intent", classify_intent_node)
     workflow.add_node("retrieve_context", retrieve_context_node)
     workflow.add_node("data_tool", data_tool_node)
     workflow.add_node("risk", risk_node)
+    workflow.add_node("human_review", human_review_node)
     workflow.add_node("final_answer", final_answer_node)
 
     workflow.set_entry_point("classify_intent")
     workflow.add_edge("classify_intent", "retrieve_context")
     workflow.add_edge("retrieve_context", "data_tool")
     workflow.add_edge("data_tool", "risk")
-    workflow.add_edge("risk", "final_answer")
+
+    def route_after_risk(state: AgentState) -> str:
+        # Roteia para revisão humana quando o risco é alto ou a evidência é fraca.
+        return "human_review" if state.get("human_review_required") else "final_answer"
+
+    workflow.add_conditional_edges(
+        "risk",
+        route_after_risk,
+        {
+            "human_review": "human_review",
+            "final_answer": "final_answer",
+        },
+    )
+    workflow.add_edge("human_review", "final_answer")
     workflow.add_edge("final_answer", END)
 
     return workflow.compile()
