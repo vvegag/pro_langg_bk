@@ -1,0 +1,5 @@
+Política de atendimento operacional bancário:
+Toda solicitação crítica deve conter identificação do cliente, produto, canal, motivo e evidência.
+Casos com impacto financeiro devem ser classificados como risco médio ou alto.
+Solicitações sem evidência documental devem ser enviadas para revisão humana.
+O assistente deve informar quando não houver evidência suficiente para conclusão automática.

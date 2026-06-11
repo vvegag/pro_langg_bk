@@ -1,0 +1,5 @@
+Procedimento de contestação de transação:
+Para contestação de transação, verificar data, valor, canal, histórico do cliente e evidências.
+Se houver divergência entre relato e dados transacionais, abrir análise manual.
+Se o valor for superior a R$ 10.000, exigir validação adicional.
+Se houver indício de fraude, classificar como risco alto e encaminhar para especialista humano.
