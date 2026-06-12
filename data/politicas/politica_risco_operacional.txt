@@ -1,7 +1,0 @@
-Regra de risco operacional:
-
-- Risco baixo: solicitação informativa sem impacto financeiro.
-- Risco médio: alteração cadastral ou contestação simples sem indício forte de fraude.
-- Risco alto: impacto financeiro elevado, possível fraude, dados sensíveis ou ausência de evidência.
-- Todo risco alto exige human-in-the-loop antes de qualquer ação.
-
