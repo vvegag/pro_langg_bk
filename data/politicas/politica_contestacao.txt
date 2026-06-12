@@ -1,0 +1,7 @@
+Procedimento de contestação:
+
+- Solicitações de contestação devem ser registradas com data, hora e identificador do cliente.
+- Transações acima de R$ 10.000 exigem validação adicional.
+- Em caso de suspeita de fraude, o caso deve seguir para revisão humana.
+- Toda decisão precisa manter rastreabilidade das evidências consultadas.
+
