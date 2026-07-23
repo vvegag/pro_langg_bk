@@ -1,81 +1,114 @@
-﻿"""Ponto de entrada do Streamlit para a POC."""
+"""Interface Streamlit da POC 2.
+
+Este arquivo reúne a experiência do usuário, exibe a resposta do fluxo e
+mantém a aplicação fácil de executar localmente.
+"""
 
 from __future__ import annotations
 
 import streamlit as st
 
-from src.graph import build_graph
-from src.settings import get_settings
+from src.graph import executar_fluxo
+from src.settings import carregar_configuracao
 
 
-def _render_result_panel(result: dict) -> None:
-    col1, col2, col3 = st.columns(3)
+config = carregar_configuracao()
 
-    col1.metric("Intenção", result.get("intent") or "N/D")
-    col2.metric("Risco", result.get("risk_level") or "N/D")
-    col3.metric(
-        "Revisão humana",
-        "Sim" if result.get("human_review_required") else "Não",
+st.set_page_config(
+    page_title=config.nome_aplicacao,
+    page_icon="🏦",
+    layout="wide",
+)
+
+st.title("Bank GenAI Operations Assistant AWS")
+st.caption("Solução local para demonstrar um fluxo operacional com GenAI e nuvem.")
+
+cenarios = {
+    "Risco baixo": {
+        "cliente_id": "111",
+        "pergunta": (
+            "Cliente 111 solicita orientação sobre uma atualização cadastral sem impacto financeiro. "
+            "Existe indício de risco? Qual procedimento o analista deve seguir?"
+        ),
+    },
+    "Risco médio": {
+        "cliente_id": "222",
+        "pergunta": (
+            "Cliente 222 contesta uma transação de valor moderado realizada no app. "
+            "Existe indício de risco? Qual procedimento o analista deve seguir?"
+        ),
+    },
+    "Risco alto": {
+        "cliente_id": "555",
+        "pergunta": (
+            "Cliente 555 contesta uma transação de R$ 12.500 realizada no app com suspeita de fraude. "
+            "Existe indício de risco? Qual procedimento o analista deve seguir?"
+        ),
+    },
+}
+
+coluna_entrada, coluna_saida = st.columns([1, 1])
+
+with coluna_entrada:
+    st.subheader("Solicitação operacional")
+    cenario_escolhido = st.selectbox(
+        "Escolha o cenário de demonstração",
+        list(cenarios.keys()),
+        index=2,
     )
 
-    if result.get("review_reason"):
-        st.warning(result["review_reason"])
+    pergunta_padrao = cenarios[cenario_escolhido]["pergunta"]
+    cliente_padrao = cenarios[cenario_escolhido]["cliente_id"]
 
-    left, right = st.columns([1, 1])
-    with left:
-        st.subheader("Resumo transacional")
-        st.json(result.get("transaction_summary") or {})
+    pergunta = st.text_area(
+        "Descreva o caso operacional",
+        value=pergunta_padrao,
+        height=180,
+    )
 
-    with right:
-        st.subheader("Contexto recuperado")
-        st.text(result.get("context") or "Sem contexto recuperado.")
+    cliente_id = st.text_input("ID do cliente", value=cliente_padrao)
+    enviar = st.button("Executar análise")
 
-    with st.expander("Resposta completa"):
-        st.write(result.get("final_answer") or "Sem resposta gerada.")
+with coluna_saida:
+    st.subheader("Resultado da análise")
+    if enviar:
+        resultado = executar_fluxo(pergunta, cliente_id=cliente_id)
+        risco = resultado.get("risco", {})
 
+        st.write(resultado["resumo"])
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Nível de risco", risco.get("nivel", "desconhecido").title())
+        col2.metric("Revisão humana", "Sim" if resultado.get("revisao_humana") else "Não")
+        col3.metric("Fonte da resposta", resultado.get("origem_llm", "fallback_local"))
 
-def main() -> None:
-    settings = get_settings()
-    st.set_page_config(page_title="Bank GenAI Operations Assistant", layout="wide")
-    st.title("Bank GenAI Operations Assistant")
-    st.caption("Assistente operacional com LangGraph, RAG, Bedrock e revisão humana.")
-
-    with st.sidebar:
-        # Manter os controles de entrada juntos facilita refazer a análise rapidamente.
-        st.header("Configuração")
-        customer_id = st.selectbox(
-            "Cliente simulado",
-            options=["123", "456", "999"],
-            index=0,
+        st.markdown("### Resumo executivo")
+        st.write(
+            resultado.get("resumo_executivo")
+            or resultado.get("texto_completo")
+            or resultado["resumo"]
         )
-        question = st.text_area(
-            "Solicitação operacional",
-            value=(
-                "Cliente 123 contesta uma transação de valor elevado feita pelo app. "
-    "Existe indício de risco? Qual procedimento o analista deve seguir?"
-            ),
-            height=140,
-        )
-        run_analysis = st.button("Executar análise", use_container_width=True)
-        st.caption(f"Região AWS: {settings.aws_region}")
 
-    if not run_analysis:
-        # A aplicação fica em espera até a pessoa iniciar a análise.
-        st.info("Preencha a solicitação e clique em Executar análise.")
-        return
+        st.markdown("### Recomendação")
+        st.write(resultado.get("recomendacao", "Sem recomendação adicional."))
 
-    # O grafo concentra o fluxo de negócio; a interface só envia entradas e mostra resultados.
-    graph = build_graph()
-    initial_state = {
-        "user_question": question,
-        "customer_id": customer_id,
-    }
+        if resultado.get("alerta"):
+            st.warning(resultado["alerta"])
 
-    with st.spinner("Executando o fluxo..."):
-        result = graph.invoke(initial_state)
+        if resultado.get("evidencias"):
+            st.markdown("### Evidências recuperadas")
+            for item in resultado["evidencias"]:
+                st.write(f"- {item['titulo']}: {item['trecho']}")
 
-    _render_result_panel(result)
+        st.markdown("### Etapas do fluxo")
+        for etapa in resultado.get("etapas", []):
+            st.write(f"- {etapa}")
 
+        with st.expander("Ver JSON completo"):
+            st.json(resultado)
+    else:
+        st.info("Execute a análise para ver o fluxo completo e as evidências recuperadas.")
 
-if __name__ == "__main__":
-    main()
+st.divider()
+st.caption(
+    "Documentação, risco, RAG e resposta final aparecem de forma rastreável no fluxo."
+)

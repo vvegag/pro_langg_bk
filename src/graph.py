@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import Any, Callable, Dict, Optional, TypedDict
 
 from src.llm import call_llm
-from src.rag import retrieve_context
+from src.rag import buscar_contexto, retrieve_context
+from src.settings import get_settings
 from src.tools import classify_risk, get_customer_transaction_summary
 
 
@@ -247,3 +248,66 @@ def build_graph():
     workflow.add_edge("final_answer", END)
 
     return workflow.compile()
+
+
+def executar_fluxo(pergunta: str, cliente_id: str | None = None) -> dict[str, Any]:
+    """Executa o grafo e adapta o resultado para a interface Streamlit."""
+
+    settings = get_settings()
+    customer_id = cliente_id or settings.default_customer_id
+    graph = build_graph()
+    result = graph.invoke(
+        {
+            "user_question": pergunta,
+            "customer_id": customer_id,
+        }
+    )
+
+    evidencias = buscar_contexto(pergunta, base_dir=settings.data_dir, limite=3)
+    risco = result.get("risk_level") or "desconhecido"
+    revisao_humana = bool(result.get("human_review_required"))
+    final_answer = result.get("final_answer") or "Fluxo executado sem resposta final."
+
+    etapas = [
+        "classify_intent",
+        "retrieve_context",
+        "data_tool",
+        "risk",
+        "human_review" if revisao_humana else "final_answer",
+    ]
+
+    return {
+        "resumo": f"Analise concluida para o cliente {customer_id}.",
+        "resumo_executivo": final_answer,
+        "texto_completo": final_answer,
+        "recomendacao": (
+            "Encaminhar para revisao humana e anexar as evidencias recuperadas."
+            if revisao_humana
+            else "Seguir o procedimento operacional com base nas evidencias consultadas."
+        ),
+        "alerta": (
+            "Caso exige revisao humana antes de qualquer acao operacional ou financeira."
+            if revisao_humana
+            else None
+        ),
+        "risco": {
+            "nivel": risco,
+            "motivos": result.get("review_reason"),
+        },
+        "revisao_humana": revisao_humana,
+        "origem_llm": (
+            "fallback_local"
+            if final_answer.startswith("## Resultado") or final_answer.startswith("Revis")
+            else "bedrock"
+        ),
+        "evidencias": [
+            {
+                "titulo": evidencia.titulo,
+                "trecho": evidencia.trecho,
+                "caminho": evidencia.caminho,
+            }
+            for evidencia in evidencias
+        ],
+        "etapas": etapas,
+        "estado": result,
+    }

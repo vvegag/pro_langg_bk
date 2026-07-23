@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover - contingência opcional
 
 @dataclass(frozen=True)
 class Settings:
+    nome_aplicacao: str = "Bank GenAI Operations Assistant"
     aws_region: str = "us-east-1"
     bedrock_chat_model_id: str = "anthropic.claude-3-haiku-20240307-v1:0"
     bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
@@ -29,6 +30,10 @@ def get_settings() -> Settings:
     # Carregar o `.env` quando existir, mas manter o projeto utilizável sem ele.
     load_dotenv()
     return Settings(
+        nome_aplicacao=os.getenv(
+            "NOME_APLICACAO",
+            "Bank GenAI Operations Assistant",
+        ),
         aws_region=os.getenv("AWS_REGION", "us-east-1"),
         bedrock_chat_model_id=os.getenv(
             "BEDROCK_CHAT_MODEL_ID",
@@ -42,3 +47,9 @@ def get_settings() -> Settings:
         data_dir=os.getenv("DATA_DIR", "data"),
         default_customer_id=os.getenv("DEFAULT_CUSTOMER_ID", "123"),
     )
+
+
+def carregar_configuracao() -> Settings:
+    """Alias usado pela interface Streamlit."""
+
+    return get_settings()
