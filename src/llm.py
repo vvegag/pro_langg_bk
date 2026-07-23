@@ -31,10 +31,7 @@ def call_llm(prompt: str, max_tokens: int = 900, temperature: float = 0.2) -> st
         from botocore.exceptions import BotoCoreError, ClientError
     except ImportError as exc:  # pragma: no cover - contingência opcional
         # Manter a POC executável mesmo quando as dependências da AWS ainda não estiverem instaladas.
-        return (
-            "[ERRO_LLM] boto3 não está disponível neste ambiente. "
-            f"Detalhe: {exc}"
-        )
+        return "[ERRO_LLM] boto3 não está disponível neste ambiente. " f"Detalhe: {exc}"
 
     body = _build_anthropic_body(prompt, max_tokens, temperature)
 
@@ -47,9 +44,13 @@ def call_llm(prompt: str, max_tokens: int = 900, temperature: float = 0.2) -> st
         )
         payload = json.loads(response["body"].read())
         return payload["content"][0]["text"]
-    except (BotoCoreError, ClientError, KeyError, json.JSONDecodeError, TypeError, ValueError) as exc:
+    except (
+        BotoCoreError,
+        ClientError,
+        KeyError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+    ) as exc:
         # Expor a falha de forma clara para permitir um plano de contingência local no grafo.
-        return (
-            "[ERRO_LLM] Não foi possível chamar o modelo no Bedrock. "
-            f"Detalhe: {exc}"
-        )
+        return "[ERRO_LLM] Não foi possível chamar o modelo no Bedrock. " f"Detalhe: {exc}"

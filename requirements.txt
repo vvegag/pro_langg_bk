@@ -8,3 +8,6 @@ langchain-community>=0.2.0
 langchain-aws>=0.1.0
 faiss-cpu>=1.8.0
 pydantic>=2.0.0
+pytest>=8.0.0
+ruff>=0.6.0
+black>=24.0.0

@@ -11,7 +11,6 @@ import streamlit as st
 from src.graph import executar_fluxo
 from src.settings import carregar_configuracao
 
-
 config = carregar_configuracao()
 
 st.set_page_config(
@@ -81,34 +80,47 @@ with coluna_saida:
         col2.metric("Revisão humana", "Sim" if resultado.get("revisao_humana") else "Não")
         col3.metric("Fonte da resposta", resultado.get("origem_llm", "fallback_local"))
 
-        st.markdown("### Resumo executivo")
-        st.write(
-            resultado.get("resumo_executivo")
-            or resultado.get("texto_completo")
-            or resultado["resumo"]
-        )
-
-        st.markdown("### Recomendação")
-        st.write(resultado.get("recomendacao", "Sem recomendação adicional."))
-
         if resultado.get("alerta"):
             st.warning(resultado["alerta"])
 
-        if resultado.get("evidencias"):
-            st.markdown("### Evidências recuperadas")
-            for item in resultado["evidencias"]:
-                st.write(f"- {item['titulo']}: {item['trecho']}")
+        tab_resposta, tab_evidencias, tab_auditoria = st.tabs(
+            ["Resposta", "Evidências", "Auditoria"]
+        )
 
-        st.markdown("### Etapas do fluxo")
-        for etapa in resultado.get("etapas", []):
-            st.write(f"- {etapa}")
+        with tab_resposta:
+            st.markdown("### Resumo executivo")
+            st.write(
+                resultado.get("resumo_executivo")
+                or resultado.get("texto_completo")
+                or resultado["resumo"]
+            )
 
-        with st.expander("Ver JSON completo"):
-            st.json(resultado)
+            st.markdown("### Recomendação")
+            st.write(resultado.get("recomendacao", "Sem recomendação adicional."))
+
+            st.caption("Nenhuma ação operacional ou financeira é executada automaticamente.")
+
+        with tab_evidencias:
+            if resultado.get("evidencias"):
+                for item in resultado["evidencias"]:
+                    st.write(f"- {item['titulo']}: {item['trecho']}")
+            else:
+                st.info("Nenhuma evidência documental foi recuperada.")
+
+        with tab_auditoria:
+            st.markdown("### Etapas do fluxo")
+            for etapa in resultado.get("etapas", []):
+                st.write(f"- {etapa}")
+
+            st.markdown("### Governança")
+            st.write("- Dados utilizados são fictícios.")
+            st.write("- Casos de alto risco exigem human-in-the-loop.")
+            st.write("- Logs locais minimizam texto livre do usuário.")
+
+            with st.expander("Ver JSON completo"):
+                st.json(resultado)
     else:
         st.info("Execute a análise para ver o fluxo completo e as evidências recuperadas.")
 
 st.divider()
-st.caption(
-    "Documentação, risco, RAG e resposta final aparecem de forma rastreável no fluxo."
-)
+st.caption("Documentação, risco, RAG e resposta final aparecem de forma rastreável no fluxo.")

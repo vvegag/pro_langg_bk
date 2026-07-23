@@ -9,6 +9,7 @@ from functools import lru_cache
 try:
     from dotenv import load_dotenv
 except ImportError:  # pragma: no cover - contingência opcional
+
     def load_dotenv() -> None:  # type: ignore[no-redef]
         return None
 
@@ -21,6 +22,8 @@ class Settings:
     bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
     streamlit_server_port: int = 8501
     data_dir: str = "data"
+    log_dir: str = "logs"
+    enable_local_logs: bool = True
     default_customer_id: str = "123"
 
 
@@ -45,6 +48,8 @@ def get_settings() -> Settings:
         ),
         streamlit_server_port=int(os.getenv("STREAMLIT_SERVER_PORT", "8501")),
         data_dir=os.getenv("DATA_DIR", "data"),
+        log_dir=os.getenv("LOG_DIR", "logs"),
+        enable_local_logs=os.getenv("ENABLE_LOCAL_LOGS", "true").lower() == "true",
         default_customer_id=os.getenv("DEFAULT_CUSTOMER_ID", "123"),
     )
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional, TypedDict
+from collections.abc import Callable
+from typing import Any, TypedDict
 
 from src.llm import call_llm
+from src.observability import append_execution_log
 from src.rag import buscar_contexto, retrieve_context
 from src.settings import get_settings
 from src.tools import classify_risk, get_customer_transaction_summary
@@ -13,14 +15,14 @@ from src.tools import classify_risk, get_customer_transaction_summary
 class AgentState(TypedDict, total=False):
     user_question: str
     customer_id: str
-    intent: Optional[str]
-    context: Optional[str]
-    transaction_summary: Optional[Dict[str, Any]]
-    risk_level: Optional[str]
-    evidence_sufficient: Optional[bool]
-    human_review_required: Optional[bool]
-    review_reason: Optional[str]
-    final_answer: Optional[str]
+    intent: str | None
+    context: str | None
+    transaction_summary: dict[str, Any] | None
+    risk_level: str | None
+    evidence_sufficient: bool | None
+    human_review_required: bool | None
+    review_reason: str | None
+    final_answer: str | None
 
 
 INTENT_LABELS = (
@@ -36,7 +38,13 @@ def _intent_from_text(text: str) -> str:
     normalized = text.lower()
     keyword_map = {
         "contestacao": ["contest", "chargeback", "transacao", "transação", "fraude"],
-        "consulta_operacional": ["procedimento", "orientacao", "orientação", "como faço", "como faco"],
+        "consulta_operacional": [
+            "procedimento",
+            "orientacao",
+            "orientação",
+            "como faço",
+            "como faco",
+        ],
         "risco": ["risco", "fraude", "suspeit", "alto impacto"],
         "cadastro": ["cadastro", "atualizar", "alterar", "endereco", "endereço"],
     }
@@ -101,7 +109,9 @@ def risk_node(state: AgentState) -> AgentState:
     summary = state.get("transaction_summary") or {}
     risk_level = classify_risk(summary)
     state["risk_level"] = risk_level
-    state["human_review_required"] = bool(risk_level == "alto" or not state.get("evidence_sufficient"))
+    state["human_review_required"] = bool(
+        risk_level == "alto" or not state.get("evidence_sufficient")
+    )
 
     reasons: list[str] = []
     if risk_level == "alto":
@@ -276,7 +286,7 @@ def executar_fluxo(pergunta: str, cliente_id: str | None = None) -> dict[str, An
         "human_review" if revisao_humana else "final_answer",
     ]
 
-    return {
+    resposta = {
         "resumo": f"Analise concluida para o cliente {customer_id}.",
         "resumo_executivo": final_answer,
         "texto_completo": final_answer,
@@ -311,3 +321,20 @@ def executar_fluxo(pergunta: str, cliente_id: str | None = None) -> dict[str, An
         "etapas": etapas,
         "estado": result,
     }
+
+    if settings.enable_local_logs:
+        append_execution_log(
+            {
+                "customer_id": customer_id,
+                "question_length": len(pergunta),
+                "intent": result.get("intent"),
+                "risk_level": risco,
+                "human_review_required": revisao_humana,
+                "evidence_count": len(evidencias),
+                "sources": [evidencia.caminho for evidencia in evidencias],
+                "llm_source": resposta["origem_llm"],
+            },
+            log_dir=settings.log_dir,
+        )
+
+    return resposta

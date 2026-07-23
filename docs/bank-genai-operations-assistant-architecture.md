@@ -140,17 +140,26 @@ pro_langg_bk/
 
 ---
 
-## 7. O que pode evoluir depois
+## 7. Controles atuais
 
-- Logs estruturados.
-- Métricas de execução.
-- Integração com APIs reais.
-- Persistência de histórico.
-- Avaliação automática de qualidade das respostas.
-- Autenticação e controle de acesso.
+- Logs estruturados locais em `logs/executions.jsonl`.
+- Avaliação simples em `evals/`.
+- Testes de smoke e comportamento em `tests/`.
+- Documento de governança em `GOVERNANCE.md`.
+- Separação entre interface, fluxo, RAG, ferramentas e LLM.
 
 ---
 
-## 8. Resumo executivo
+## 8. O que pode evoluir depois
+
+- Integração com APIs reais.
+- Persistência de histórico.
+- Avaliação automática mais robusta de qualidade das respostas.
+- Autenticação e controle de acesso.
+- Monitoramento centralizado em CloudWatch.
+
+---
+
+## 9. Resumo executivo
 
 Esta solução local foi construída para mostrar como combinar LLM, LangGraph, RAG e validação de risco em um fluxo operacional bancário controlado. O objetivo não é substituir sistemas reais, mas demonstrar domínio técnico com uma arquitetura clara, explicável e segura.

@@ -1,0 +1,4 @@
+{"id": "alto_fraude", "customer_id": "555", "question": "Cliente 555 contesta uma transacao de R$ 12.500 realizada no app com suspeita de fraude. Existe risco operacional?", "expected_risk": "alto", "expected_human_review": true}
+{"id": "medio_contestacao", "customer_id": "222", "question": "Cliente 222 contesta uma transacao de valor moderado no aplicativo. Qual procedimento seguir?", "expected_risk": "medio", "expected_human_review": false}
+{"id": "baixo_cadastro", "customer_id": "111", "question": "Cliente 111 solicita orientacao sobre atualizacao cadastral sem impacto financeiro.", "expected_risk": "baixo", "expected_human_review": false}
+{"id": "cliente_desconhecido", "customer_id": "999", "question": "Cliente 999 pede orientacao operacional, mas nao ha dados transacionais conhecidos.", "expected_risk": "baixo", "expected_human_review": false}
