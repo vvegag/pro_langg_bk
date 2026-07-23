@@ -64,6 +64,22 @@ No Windows PowerShell:
 python -m streamlit run app.py --server.port 8502
 ```
 
+## Implantação manual em Ubuntu
+
+A implantação didática usa uma instância EC2 Ubuntu, Docker e Nginx. O Nginx recebe o acesso HTTP na porta 80 e encaminha para o Streamlit no `localhost:8502`; a porta do Streamlit não precisa ser exposta publicamente.
+
+```bash
+docker build -t bank-genai-poc:local .
+docker run -d --name bank-genai-poc --restart unless-stopped \
+  -p 127.0.0.1:8502:8502 \
+  -e AWS_REGION=us-east-1 \
+  bank-genai-poc:local
+```
+
+Na EC2, a aplicação deve usar uma IAM Instance Profile com somente as permissões necessárias para o Bedrock. A chave SSH `.pem` serve apenas para acesso administrativo à instância e nunca deve entrar no repositório.
+
+Configuração do Nginx: copie `deploy/nginx/streamlit.conf` para `/etc/nginx/sites-available/bank-genai-poc`, crie o link em `sites-enabled`, valide com `sudo nginx -t` e recarregue com `sudo systemctl reload nginx`.
+
 ## Variáveis De Ambiente
 
 Copie `.env.example` para `.env` se quiser ajustar a configuração local.
